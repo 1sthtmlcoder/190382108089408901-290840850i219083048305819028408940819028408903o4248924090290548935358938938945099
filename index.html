@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secure Dynamic Page Loader</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+input, button, textarea { width: 100%; padding: 8px; margin: 5px 0; }
+#content { border: 1px solid #ccc; padding: 10px; min-height: 200px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<h2>Secure Loader</h2>
+<label>AES Passphrase:</label>
+<input type="password" id="keyInput" placeholder="Enter AES key">
+<button id="decryptBtn">Decrypt Content</button>
+
+<div id="content">Content will appear here.</div>
+
+<!-- Example: encrypted blob (Base64 salt||iv||ciphertext) -->
+<script type="application/json" id="encryptedBlob">
+{
+  "blob": "PUT_YOUR_ENCRYPTED_BLOB_HERE",
+  "iterations": 300000
+}
+</script>
+
+<script>
+// Helper functions
+function strToBuf(s){ return new TextEncoder().encode(s); }
+function bufToStr(buf){ return new TextDecoder().decode(buf); }
+function base64ToBuf(b64){ const bin=atob(b64); const buf=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i); return buf.buffer; }
+
+// PBKDF2 + AES-GCM decryption (matches your toolbox)
+async function deriveKeyPBKDF2(pass, salt, iterations){
+  const base = await crypto.subtle.importKey('raw', strToBuf(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+}
+
+async function aesDecrypt(blobB64, pass, iterations){
+  const buf = new Uint8Array(base64ToBuf(blobB64));
+  const salt = buf.slice(0,16).buffer;
+  const iv = buf.slice(16,28).buffer;
+  const ct = buf.slice(28).buffer;
+  const key = await deriveKeyPBKDF2(pass, salt, iterations);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+  return bufToStr(pt);
+}
+
+// Fetch HTML safely
+async function fetchHTML(url){
+  try{
+    const resp = await fetch(url);
+    const html = await resp.text();
+    document.getElementById('content').innerHTML = html;
+  }catch(e){
+    document.getElementById('content').innerText = 'Failed to load content: '+e;
+  }
+}
+
+document.getElementById('decryptBtn').addEventListener('click', async ()=>{
+  const pass = document.getElementById('keyInput').value;
+  if(!pass) return alert('Enter AES key');
+  const blobData = JSON.parse(document.getElementById('encryptedBlob').textContent);
+  try{
+    const decrypted = await aesDecrypt(blobData.blob, pass, blobData.iterations);
+    // If decrypted content is a URL, fetch it
+    if(decrypted.startsWith('http')){
+      const url = decrypted; // store temporarily
+      await fetchHTML(url);
+      // clear reference immediately for security
+      // note: page keeps the HTML in DOM but the URL variable is gone
+    } else {
+      document.getElementById('content').innerHTML = decrypted;
+    }
+  }catch(e){
+    document.getElementById('content').innerText = 'Decryption failed: '+e;
+  }
+});
+</script>
+
+</body>
+</html>
